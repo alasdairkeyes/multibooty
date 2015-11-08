@@ -1,0 +1,1197 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use File::Copy;
+use File::Basename;
+
+## Common variables used throughouth
+    my $name                = "Multibooty";
+    my $project_url         = "https://github.com/alasdairkeyes/multibooty";
+    my $VERSION             = '0.1';
+    my $multibooty_folder   = 'multibooty';
+    my $relative_boot_folder        = join('/', $multibooty_folder, 'boot');
+    my $relative_grub_folder        = join('/', $relative_boot_folder, 'grub');
+    my $relative_grub_config        = join('/', $relative_grub_folder, 'grub.cfg');
+    my $relative_iso_folder         = join('/', $multibooty_folder, 'isos');
+    my $relative_extra_files_folder = join('/', $relative_boot_folder, 'extra_files');
+    my $temp_mount_point_root       = '/tmp';
+    my $fs_type                     = 'ext4';
+
+
+## Structure containing templates for different OS Grub configurations
+## FIXME: This is bulky and some distros use the same template as others, create some form of inheritance { alias => 'centos7', inherits_from => 'rhel7' }
+    my $iso_configs = [
+
+
+    ## CENTOS
+        ## 7
+        {
+            alias           => "centos7",
+            regex           => qr{^CentOS-7-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/vmlinuz noeject inst.stage2=hd:UUID=%%uuid%%:\$isofile
+                                    initrd (loop)/isolinux/initrd.img
+                                ~,
+        },
+        ## 6
+        {
+            alias           => "centos6",
+            regex           => qr{^CentOS-6\..*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/vmlinuz noeject stage2=hd:UUID=%%uuid%%:%%iso_extra_files_folder%%/images/install.img
+                                    initrd (loop)/isolinux/initrd.img
+                                ~,
+            extract_files   => [ qw| images/install.img | ],
+        },
+
+    ## GPARTED
+        ## ALL
+        {
+            alias           => 'gparted',
+            regex           => qr{^gparted-live-.*\.iso}i,
+            template        => qq~
+                                    linux (loop)/live/vmlinuz boot=live union=overlay username=user config components quiet noswap noeject toram=filesystem.squashfs ip=  nosplash findiso=\$isofile
+                                    initrd (loop)/live/initrd.img
+                                ~,
+        },
+
+    ## LINUXMINT
+        ## ALL
+        {
+            alias           => 'linuxmint',
+            regex           => qr{^linuxmint-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/casper/vmlinuz file=/preseed/linuxmint.seed boot=casper initrd=/casper/initrd.lz iso-scan/filename=\$isofile noeject noprompt splash --
+                                    initrd (loop)/casper/initrd.lz
+                                ~,
+        },
+
+    ## KALI
+        ## ALL
+        {
+            alias           => 'kali',
+            regex           => qr{^kali-linux-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/live/vmlinuz boot=live findiso=\$isofile noconfig=sudo username=root hostname=kali
+                                    initrd (loop)/live/initrd.img
+                                ~,
+        },
+
+    ## TAILS
+        ## ALL
+        {
+            alias           => 'tails',
+            regex           => qr{^tails-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/live/vmlinuz2 boot=live config findiso=\$isofile live-media=removable apparmor=1 security=apparmor nopersistent noprompt timezone=Etc/UTC block.events_dfl_poll_msecs=1000 noautologin module=Tails
+                                    initrd (loop)/live/initrd2.img
+                                ~,
+        },
+
+    ## KNOPPIX
+        ## ALL
+        {
+            alias           => 'knoppix',
+            regex           => qr{^KNOPPIX_.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/boot/isolinux/linux bootfrom=/mnt-iso/\$isofile acpi=off keyboard=us lang=us
+                                    initrd (loop)/boot/isolinux/minirt.gz
+                                ~,
+        },
+
+    ## FEDORA
+        # ALL
+        {
+            alias           => 'fedora',
+            regex           => qr{^Fedora-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/vmlinuz noeject inst.stage2=hd:UUID=%%uuid%%:\$isofile
+                                    initrd (loop)/isolinux/initrd.img
+                                ~,
+        },
+
+    ## RHEL
+        ## 7
+        {
+            alias           => "rhel7",
+            regex           => qr{^rhel-[a-z]+-7\..*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/vmlinuz noeject inst.stage2=hd:UUID=%%uuid%%:\$isofile
+                                    initrd (loop)/isolinux/initrd.img
+                                ~,
+        },
+
+    ## DEBIAN
+        ## 8
+        {
+            alias           => "debian8",
+            regex           => qr{^^debian-8\..*\.iso$}i,
+            template        => qq~
+                                    set initrdfile='%%isoinitrd%%'
+                                    linux (loop)/install.amd/vmlinuz iso-scan/ask_second_pass=true iso-scan/filename=\$isofile
+                                    initrd \$initrdfile
+                                ~,
+            instructions    => '',
+            download_initrd => 'https://mirrors.kernel.org/debian/dists/jessie/main/installer-%%arch%%/current/images/hd-media/initrd.gz',
+        },
+    #    ## 7 - Doesn't seem to work, initrd.gz doesn't allow for the usb drive to be found
+    #    {
+    #        alias           => "debian7",
+    #        regex           => qr{^^debian-7\..*\.iso$}i,
+    #        template        => qq~
+    #                                set initrdfile='%%isoinitrd%%'
+    #                                linux (loop)/install.amd/vmlinuz iso-scan/ask_second_pass=true iso-scan/filename=\$isofile
+    #                                initrd \$initrdfile
+    #                            ~,
+    #        instructions    => '',
+    #        download_initrd => 'https://mirrors.kernel.org/debian/dists/wheezy/main/installer-%%arch%%/current/images/hd-media/initrd.gz',
+    #    },
+
+
+    ## UBUNTU
+        ## 15.x
+        {
+            alias           => "ubuntu15",
+            regex           => qr{^ubuntu-15\..*\.iso$}i,
+            template        => qq~
+                                    set initrdfile='%%isoinitrd%%'
+                                    linux (loop)/install/vmlinuz iso-scan/ask_second_pass=true iso-scan/filename=\$isofile
+                                    initrd \$initrdfile
+                                ~,
+            download_initrd => 'http://archive.ubuntu.com/ubuntu/dists/wily/main/installer-%%arch%%/current/images/hd-media/initrd.gz',
+        },
+    #    ## 14.x - Doesn't seem to work, initrd.gz doesn't allow for the usb drive to be found
+    #    {
+    #        alias           => "ubuntu14",
+    #        regex           => qr{^ubuntu-14\..*\.iso$}i,
+    #        template        => qq~
+    #                                set initrdfile='%%isoinitrd%%'
+    #                                linux (loop)/install/vmlinuz iso-scan/ask_second_pass=true iso-scan/filename=\$isofile
+    #                                initrd \$initrdfile
+    #                            ~,
+    #        download_initrd => 'http://archive.ubuntu.com/ubuntu/dists/trusty/main/installer-%%arch%%/current/images/hd-media/initrd.gz',
+    #    },
+
+    ## MEMTEST
+        # ALL
+        {
+            alias           => "memtest",
+            regex           => qr{^Memtest86-.*\.iso$}i,
+            template        => qq~
+                                    linux16 (loop)/ISOLINUX/MEMTEST
+                                ~,
+        },
+
+    ## FIXME: NST passes CDLABEL, try changing this to UUID or alternatively detect this label
+    ## NETWORK SECURITY TOOLKIT NST
+        ## 22-7334
+        {
+            alias           => "nst-22-7334",
+            regex           => qr{^nst-22-7334\..*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/vmlinuz0 noeject iso-scan/filename=\$isofile root=CDLABEL=nst-22-7334.i686 ro rd.live.image rd.luks=0 rd.md=0 rd.dm=0 audit=0 systemd.unit=graphical.target nstrelocate=false
+                                    initrd (loop)/isolinux/initrd0.img
+                                ~,
+        },
+
+    ## SYSTEM RESCUE CD
+        ## ALL
+        {
+            alias           => "systemrescuecd",
+            regex           => qr{^systemrescuecd-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/rescue64 isoloop=\$isofile
+                                    initrd (loop)/isolinux/initram.igz
+                                ~,
+        },
+
+    ## OPENSUSE
+        ## 13
+        {
+            alias           => "opensuse13",
+            regex           => qr{^openSUSE-13\..*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/boot/x86_64/loader/linux install=hd:\$isofile
+                                    initrd (loop)/boot/x86_64/loader/initrd
+                                ~,
+        },
+
+    ## ARCH
+        ## ALL
+        {
+            alias           => "arch",
+            regex           => qr{^archlinux-.*\.iso$}i,
+            template        => qq~
+                                linux (loop)/arch/boot/x86_64/vmlinuz archisodevice=/dev/loop0 img_dev=/dev/disk/by-uuid/%%uuid%% img_loop=\$isofile
+                                initrd (loop)/arch/boot/x86_64/archiso.img
+                                ~,
+        },
+
+    ## DBAN
+        ## ALL
+        {
+            alias           => "dban",
+            regex           => qr{^dban-.*\.iso$}i,
+            template        => qq~
+                                linux (loop)/DBAN.BZI
+                                ~,
+        },
+
+    ## CLONEZILLA 
+        ## ALL
+        {
+            alias           => "clonezilla",
+            regex           => qr{^clonezilla-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/live/vmlinuz findiso=\$isofile boot=live union=overlay username=user config
+                                    initrd (loop)/live/initrd.img
+                                ~,
+        },
+
+    ## GENTOO
+        ## ALL
+        {
+            alias           => "gentoo",
+            regex           => qr{^livedvd-.*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/isolinux/gentoo root=/dev/ram0 init=/linuxrc aufs looptype=squashfs loop=/image.squashfs cdroot isoboot=\$isofile splash=silent,theme:default console=tty0
+                                    initrd (loop)/isolinux/gentoo.igz 
+                                ~,
+            alias_in_menu   => 1,
+        },
+
+#    ## VMWare ESXi
+#        {
+#            alias           => "vmwareesxi6",
+#            regex           => qr{^VMware-VMvisor-Installer-6\..*\.iso$}i,
+#            template        => qq~
+#                                    linux (loop)/tboot0.b00 runweasel modules=/b.b00 --- /jumpstrt.gz --- /useropts.gz --- /k.b00 --- /chardevs.b00 --- /a.b00 --- /user.b00 --- /uc_intel.b00 --- /uc_amd.b00 --- /sb.v00 --- /s.v00 --- /mtip32xx.v00 --- /ata_pata.v00 --- /ata_pata.v01 --- /ata_pata.v02 --- /ata_pata.v03 --- /ata_pata.v04 --- /ata_pata.v05 --- /ata_pata.v06 --- /ata_pata.v07 --- /block_cc.v00 --- /ehci_ehc.v00 --- /elxnet.v00 --- /emulex_e.v00 --- /weaselin.t00 --- /esx_dvfi.v00 --- /ima_qla4.v00 --- /ipmi_ipm.v00 --- /ipmi_ipm.v01 --- /ipmi_ipm.v02 --- /lpfc.v00 --- /lsi_mr3.v00 --- /lsi_msgp.v00 --- /lsu_hp_h.v00 --- /lsu_lsi_.v00 --- /lsu_lsi_.v01 --- /lsu_lsi_.v02 --- /lsu_lsi_.v03 --- /lsu_lsi_.v04 --- /misc_cni.v00 --- /misc_dri.v00 --- /net_bnx2.v00 --- /net_bnx2.v01 --- /net_cnic.v00 --- /net_e100.v00 --- /net_e100.v01 --- /net_enic.v00 --- /net_forc.v00 --- /net_igb.v00 --- /net_ixgb.v00 --- /net_mlx4.v00 --- /net_mlx4.v01 --- /net_nx_n.v00 --- /net_tg3.v00 --- /net_vmxn.v00 --- /nmlx4_co.v00 --- /nmlx4_en.v00 --- /nmlx4_rd.v00 --- /nvme.v00 --- /ohci_usb.v00 --- /qlnative.v00 --- /rste.v00 --- /sata_ahc.v00 --- /sata_ata.v00 --- /sata_sat.v00 --- /sata_sat.v01 --- /sata_sat.v02 --- /sata_sat.v03 --- /sata_sat.v04 --- /scsi_aac.v00 --- /scsi_adp.v00 --- /scsi_aic.v00 --- /scsi_bnx.v00 --- /scsi_bnx.v01 --- /scsi_fni.v00 --- /scsi_hps.v00 --- /scsi_ips.v00 --- /scsi_meg.v00 --- /scsi_meg.v01 --- /scsi_meg.v02 --- /scsi_mpt.v00 --- /scsi_mpt.v01 --- /scsi_mpt.v02 --- /scsi_qla.v00 --- /uhci_usb.v00 --- /xhci_xhc.v00 --- /tools.t00 --- /xorg.v00 --- /vsanheal.v00 --- /imgdb.tgz --- /imgpayld.tgz
+#                                    initrd (loop)/imgpayld.tgz
+#                                ~,
+#        },
+    ];
+
+
+
+
+
+preflight();
+
+
+my ($init,$update,$device_path) = process_arguments();
+
+header("$name");
+
+if ($init) {
+    my $device_lines = lsblk($device_path);
+    my $device_info = $$device_lines[0];
+    print "You have chosen to initialize '$device_path' (" . $device_info->{ size } . "), this will do the following...\n";
+    print "-> Erase all data on the device\n";
+    print "-> Create a single extX partition\n";
+    print "-> Install the bootloader\n";
+    my $cont = question ("Do you want to continue? (y|N)?", undef, 'n', qr/^(y(es)?|n(o)?)$/i );
+    die "Cancelled at user request"
+        unless ($cont =~ /^y(es)?$/i);
+
+    die "Some partitions are still mounted, please unmount and then run this again"
+        if (report_mounted($device_path));
+
+    build_device($device_path);
+
+    separator();
+
+    print "Device has been built\n";
+    print "Please mount it and place your iso images into '$relative_iso_folder' on the disk and then run\n";
+    print "   multibooty --update $device_path\n";
+    print "\n";
+
+
+
+    
+} elsif ($update) {
+    my $device_lines = lsblk($device_path);
+
+    # Check this matches
+    if (scalar(@$device_lines) != 2) {
+        die "This device has more than 1 partition";
+    }
+
+
+    my $mount_point;
+    my $we_mounted_device = 0;
+    if ($mount_point = $$device_lines[1]->{ mountpoint }) {
+        print "Device $device_path is already mounted in '$mount_point'\n";
+    } else {
+        my $mount_device = question ("The Partition on '$device_path' doesn't seem to be mounted, do you wish to mount it? (y|N)?", undef, 'y', qr/^(y(es)?|n(o)?)$/i );
+        die "Cancelled at user request"
+            unless ($mount_device =~ /^y(es)?$/i);
+
+        my $partition_name = $$device_lines[1]->{ kname };
+        if (!$partition_name) {
+            print "FAILED\n";
+            die "Failed to get new partition name";
+        }
+        my $partition_device = join('/','/dev', $partition_name);
+
+
+        $mount_point = create_random_mount_point();
+        mount_partition_device($partition_device, $mount_point);
+
+        my $mounted_multibooty_folder = join('/', $mount_point, $multibooty_folder);
+        unless ( -d $mounted_multibooty_folder) {
+            unmount_mount_point($mount_point);
+            die "Filesystem on device '$partition_device' doesn't have a '$multibooty_folder' folder. This doesn't look the be like a $name USB stick";
+        }
+        ++$we_mounted_device;
+    }
+
+
+    create_grub_config($mount_point);
+    unmount_mount_point($mount_point)
+        if ($we_mounted_device);
+}
+
+
+exit;
+
+
+
+
+##
+## Functions
+##
+
+
+
+## Preflight checks before doing anything
+
+    sub preflight {
+        die "Run as root"
+            if ($>);
+
+        foreach my $binary (qw/ parted mkfs mount umount grub-install /) {
+            if (system("which $binary > /dev/null")) {
+                die "Failed to find binary '$binary' which $name relies on";
+            }
+        }
+    }
+
+
+
+## Take a full block device path /dev/sdx and create a MSDOS partition table on it
+    sub create_partition_table {
+
+        my $device_path = shift || '';
+        is_block_disk($device_path);
+        
+        print "Creating partition table on '$device_path'...\n";
+        if (system("parted", "-s", $device_path, "mklabel", "msdos")) {
+            print "FAILED\n";
+            die "Failed to create partition table on '$device_path': $! : $?";
+        }
+        print "OK\n";
+        return 1;
+    }
+
+
+
+## Take a full block device path /dev/sdx and create a single partition using
+## all the space
+    sub create_partition {
+
+        my $device_path = shift || '';
+        is_block_disk($device_path);
+        print "Creating partition on '$device_path'...\n";
+        if (system("parted", "-s", $device_path, "mkpart", "primary", '1', '--', '-1')) {
+            print "FAILED\n";
+            die "Failed to create partition table on '$device_path': $! : $?";
+        }
+        print "OK\n";
+        return 1;
+    }
+
+
+
+## Take a full partition path /dev/sdx1 and optional FS type and format the
+## partition
+    sub mkfs {
+        my $partition_device = shift || '';
+        is_block_partition($partition_device);
+
+        my $fs = shift || $fs_type;
+
+        print "Making Filesystem on '$partition_device'...\n";
+        if (system("mkfs" , '-t', $fs, $partition_device)) {
+            print "FAILED\n";
+            die "Failed to create '$fs' filesystem on '$partition_device': $! : $?";
+        }
+        print "OK\n";
+
+        return 1;
+    }
+
+
+
+## Create a mount point with a random element
+    sub create_random_mount_point {
+        print "Creating mountpoint...\n";
+        my @chars = ("A".."Z", "a".."z");
+        my $string;
+        $string .= $chars[rand @chars] for 1..8;
+
+        my $mount_point = join('/', $temp_mount_point_root, "multibooty_" .$string);
+        if (! mkdir $mount_point) {
+            print "FAILED\n";
+            die "Failed to create mount point '$mount_point'";
+        }
+        print "OK\n";
+        return $mount_point;
+    }
+
+
+## Take a full partition path /dev/sdx1 OR ISO image and mount point and mount the device
+## Loopback device is used if ISO is supplied
+    sub mount_partition_device {
+        my $partition_device = shift || '';
+        my $mount_point = shift
+            || die "mount_partition_device: no mount_point";
+
+        my $is_iso = 0;
+        # Is iso
+        if ($partition_device =~ /^.*\.iso$/i && -f $partition_device) {
+            $is_iso = 1;
+        } else {
+            is_block_partition($partition_device);
+        }
+
+        print "Mounting '$partition_device' to '$mount_point'...\n";
+        my @mount_command = ("mount", $partition_device, $mount_point);
+
+        push (@mount_command, "-o", "loop")
+            if ($is_iso);
+
+        if (system(@mount_command)) {
+            print "FAILED\n";
+            die "Failed to mount '$partition_device' to '$mount_point': $! : $?";
+        }
+        print "OK\n";
+        return 1;
+    }
+
+
+
+
+## Take a mount point and unmount it
+    sub unmount_mount_point {
+        my $mount_point = shift
+            || die "unmount_mount_point: no mount_point";
+
+        print "Unmounting '$mount_point'...\n";
+        if (system("umount", $mount_point)) {
+            print "FAILED\n";
+            die "Failed to unmount '$mount_point': $! : $?";
+        }
+        print "OK\n";
+        return 1;
+    }
+
+
+
+
+## Take a mount point and delete it - rmdir
+    sub remove_mount_point {
+        my $mount_point = shift
+            || die "remove_mount_point: no mount_point";
+
+        print "Removing mount point '$mount_point'...\n";
+        if (-d $mount_point) {
+
+            rmdir $mount_point
+                || die "Failed to remove mount point '$mount_point': $! : $?";
+
+        }
+        print "OK";
+        return 1;
+    }
+
+
+
+## Take a full device path /dev/sdx and the mount point is is ALREADY mounted to
+## Then install grub
+    sub install_grub {
+        my $device_path = shift || '';
+        my $mount_point = shift
+            || die "install_grub: no mount_point";
+
+        print "Installing Grub to '$device_path'...\n";
+        my $boot_directory = join('/', $mount_point, $relative_boot_folder);
+        if (system("grub-install", "--force", "--no-floppy", "--boot-directory=$boot_directory", $device_path)) {
+            print "FAILED\n";
+            die "Failed to install grub: $! : $?";
+        }
+        print "OK";
+        return 1;
+    }
+
+
+
+## Take a mount point of a multibooty device and Create a selection of required folders
+    sub create_folders {
+        my $mount_point = shift
+            || "creating_folders: no mount_point";
+
+        my $iso = join('/', $mount_point, $relative_iso_folder);
+        print "\nCreating folder '$iso'...\n";
+        if (! mkdir $iso) {
+            print "FAILED\n";
+            die "Failed to create '$iso': $! : $?";
+        }
+        # Sod umasks, this is much easier
+        chmod 0777, $iso;
+        print "OK\n";
+
+
+        my $extra_files = join('/', $mount_point, $relative_extra_files_folder);
+        print "Creating folder '$extra_files'...\n";
+        if (! mkdir $extra_files ) {
+            print "FAILED\n";
+            die "Failed to create '$extra_files': $! : $?";
+        }
+        chmod 0777, $extra_files;
+
+        print "OK\n";
+    }
+
+
+
+## Take a device path /dev/sdx and do all that's necessary to install multibooty (destructive)
+    sub build_device {
+        my $device_path = shift || '';
+        is_block_disk($device_path);
+
+        print "Building device '$device_path'\n";
+
+        create_partition_table($device_path);
+        create_partition($device_path);
+
+        print "Detecting device name of new partition: ";
+        my $device_lines = lsblk($device_path);
+        if (scalar(@$device_lines) != 2) {
+            print "FAILED\n";
+            die "Incorrect number of disk/partitions (" . scalar(@$device_lines) . ")";
+        }
+        my $partition_name = $$device_lines[1]->{ kname };
+        if (!$partition_name) {
+            print "FAILED\n";
+            die "Failed to get new partition name";
+        }
+        my $partition_device = join('/','/dev', $partition_name);
+
+        mkfs($partition_device);
+        my $mount_point = create_random_mount_point();
+        mount_partition_device($partition_device, $mount_point);
+        install_grub($device_path, $mount_point);
+        create_folders($mount_point);
+
+        sleep 1;
+        unmount_mount_point($mount_point);
+        remove_mount_point($mount_point);
+        
+        return 1;
+    }
+
+
+
+## Take a device path /dev/sdx and return whether any partitions on it it are mounted
+    sub report_mounted {
+        my $device_path = shift || '';
+        is_block_disk($device_path);
+
+        my $device_lines = lsblk($device_path);
+        my $is_mounted = 0;
+        foreach my $device_line (@$device_lines) {
+            if ($device_line->{ mountpoint }) {
+                ++$is_mounted;
+                print "Device '$device_line->{ kname }' is mounted at '$device_line->{ mountpoint }'\n";
+            }
+        }
+        if ($is_mounted) {
+            print "Please unmount the disks/partitions above before continuing\n";
+        }
+        return $is_mounted;
+    }
+
+
+
+## Process CLI arguments and check they're good
+    sub process_arguments {
+        my (
+            $init,
+            $update,
+            $help,
+            $version,
+        );
+
+        GetOptions(
+            "init"      => \$init,
+            "update"    => \$update,
+            "help"      => \$help,
+            "version"   => \$version,
+        );
+
+        help() if $help;
+        if ($version) {
+            version();
+            exit;
+        }
+
+        die "Require either init or update action"
+            if (!$init && !$update && !$help);
+
+        die "Only init or update can be specified"
+            if ($init && $update);
+
+        my $device_path = pop(@ARGV);
+
+        die "Device required"
+            unless ($device_path);
+
+        die "Device '$device_path' doesn't look valid"
+            unless ($device_path =~ m{^/dev(/[a-z0-9\-]+)+$});
+
+        die "Couldn't find device '$device_path'"
+            unless (-b $device_path);
+
+        is_block_disk($device_path);
+
+        return ($init, $update, $device_path);    
+    }
+
+
+
+
+## Return an array of output fields used when calling lsblk
+    sub lsblk_fields {
+        return qw/ NAME KNAME MAJ:MIN FSTYPE MOUNTPOINT LABEL UUID RO RM MODEL SIZE STATE OWNER GROUP MODE ALIGNMENT MIN-IO OPT-IO PHY-SEC LOG-SEC ROTA SCHED RQ-SIZE TYPE DISC-ALN DISC-GRAN DISC-MAX /;
+            # Documentation also says DISC-ZERO, but this returns no output, so leaving out
+    }
+
+
+
+
+## Return the output of lsblk_fields as comma separated string
+    sub lsblk_fields_string {
+        return join(',', lsblk_fields());
+    }
+
+
+
+
+# Takes a device /dev/xxx and checks that it's a block disk and not a partition
+    sub is_block_disk {
+        my $device_path = shift
+            || die "No device for is_block_disk";
+
+        die "Device '$device_path' doesn't look to be a block device, maybe it's a partition?"
+            unless ( grep { $device_path eq "/dev/" . $_->{ kname } } @{removable_block_devices_without_partitions()});
+
+        return $device_path;
+    }
+
+
+
+# Takes a device /dev/xxx and checks that it's not a block disk but rather a partition
+    sub is_block_partition {
+        my $partition_device = shift
+            || die "No device for is_block_disk";
+
+        die "Device '$partition_device' doesn't look to be a partition, maybe it's a block device?"
+            unless ( grep { ($partition_device eq "/dev/" . $_->{ kname }) && ( $_->{ type } eq "part" ) } @{removable_block_devices_with_partitions()});
+
+        return $partition_device;
+    }
+
+
+
+## Executes lsblk and feeds each line of output into an array ref of hashrefs
+    sub lsblk {
+        my $device_path = shift || '';
+        is_block_disk($device_path)
+            if ($device_path);
+
+        my @command = (
+            'lsblk',
+            '-P',
+            '-o',
+            lsblk_fields_string()
+        );
+        push (@command, $device_path)
+            if ($device_path);
+
+        my $c = join(' ', @command);
+
+        open(my $lsblk_output, "$c |")
+            || die "Failed to run lsblk";
+
+        my $devices = [];
+        foreach my $line (<$lsblk_output>) {
+            my %data = $line =~ m/([A-Z\-:]+)="(.*?)"/g;
+            %data = map { lc($_) => $data{ $_ } } keys(%data);
+            push (@$devices, \%data);
+        }
+        return $devices;
+    }
+
+
+## Take output of lsblk and strip out non-removable or ROM devices
+    sub removable_block_devices_with_partitions {
+        my $devices = lsblk();
+        my @removable = grep {
+            $_->{ rm    } == 1 &&
+            $_->{ type  } ne "rom"
+        } @$devices;
+        return \@removable;
+    }
+
+
+## Take output of removable_block_devices_with_partitions and strip out
+## items that aren't disk devices
+    sub removable_block_devices_without_partitions {
+        my $devices = removable_block_devices_with_partitions();
+        my @removable = grep {
+            $_->{ type  } eq "disk"
+        } @$devices;
+        return \@removable;
+    }
+
+
+
+## Take a kernel name for a block device and get the information
+## for it from removable_block_devices_with_partitions()
+    sub block_device_from_kname {
+        my $kname = shift
+            || die "block_device_from_kname: no kname";
+
+        if ($kname =~ m{^/dev/(.*/)*([a-z0-9\-]+)$}) {
+            $kname = $2;
+        }
+
+        my $devices = removable_block_devices_with_partitions();
+        my @matches = grep {
+            $_->{ kname } eq $kname,
+        } @$devices;
+
+        die "Found more than one device matching '$kname'"
+            if (scalar(@matches) > 1);
+
+        return @matches;
+    }
+
+
+
+## Take a mount point and return the hashref from lsblk that is mounted
+## on that mount point
+    sub block_device_from_mount_point {
+        my $mount_point = shift
+            || die "block_device_from_mount_point: no mount_point";
+
+        my $devices = removable_block_devices_with_partitions();
+        my @matches = grep {
+            $_->{ mountpoint } eq $mount_point,
+        } @$devices;
+
+        die "Found more than one device matching '$mount_point'"
+            if (scalar(@matches) > 1);
+
+        return \@matches;
+    }
+
+
+
+## Ask a question of the user
+    sub question {
+        my $question = shift || die "No question";
+        my $options = shift || [];
+        my $default = shift || '';
+        my $regex   = shift || undef;
+
+        print "\n$question\n";
+        my $option_count = 1;
+        foreach my $option (@$options) {
+            print "[" . $option_count . "] $$option[0] " . $$option[1] . "\n";
+            ++$option_count;
+        }
+
+        my $ok = 0;
+        while (!$ok) {
+            print ">";
+            my $answer = <>;
+            $answer =~ s/\n+$//;
+            if (scalar(@$options) && $answer =~ /^\d+$/ && $$options[($answer - 1)]) {
+                return $$options[($answer -1 )][0];
+            } elsif (!$answer)  {
+                return $default
+                    if ($default);
+            } elsif ($regex && $answer =~ $regex) {
+                return $answer;
+            }
+
+            print "Invalid\n";
+        }
+        
+    }
+
+
+
+## Output a header
+    sub header {
+        my $message = shift || "";
+        print "\n";
+        print "=" x 80;
+        print "\n" . $message . "\n";
+        print "=" x 80;
+        print "\n\n";
+    }
+
+
+## Output a separator
+    sub separator {
+        my $message = shift || 
+        print "\n";
+        print "=" x 80;
+        print "\n\n";
+    }
+
+
+
+## Take a mount point of multibooty stick and create a grub config for
+## all .iso files found
+    sub create_grub_config {
+        my $mount_point = shift
+            || die "create_grub_config: no mount_point";
+
+        my $config = '';
+        my $header = <<EOF;
+# This grub.cfg file was created by multibooty $project_url 
+# 
+
+# Never boot automatically
+set timeout=-1
+set default=0
+
+
+# Make it ugly
+color_normal=light-green/black
+menu_color_highlight=black/light-green
+menu_color_normal=light-green/black
+
+menuentry "Boot From First Hard Drive" {
+    chainloader (hd0,0)+1
+}
+
+menuentry "Boot From Second Hard Drive" {
+    chainloader (hd1,0)+1 
+}
+EOF
+
+        my $power_config = <<EOF;
+menuentry "Shutdown" {
+  halt
+}
+menuentry "Reboot" {
+  reboot
+}
+EOF
+
+        my $custom_config_header = <<EOF;
+# Below you can enter your own grub config
+# Do not change the CUSTOM CONFIG lines.
+# this content will be preserved between updates
+##== CUSTOM CONFIG ==##
+EOF
+
+        my $custom_config_footer = "##== /CUSTOM CONFIG ==##\n";
+
+        $config .= $header . "\n\n";
+
+        my $grub_config_file = join('/', $mount_point, $relative_grub_config);
+
+
+    ## Load custom information from grub config if it exists
+        my $custom_config_lines = "\n";
+        if (-f $grub_config_file ) {
+
+            open (my $grub_config_fh, '<', $grub_config_file)
+                || die "Failed to open '$grub_config_file' to fetch existing custom config: $!";
+
+            my $existing_config = join('', <$grub_config_fh>);
+            close ($grub_config_fh);
+
+            if ($existing_config =~ m{##== CUSTOM CONFIG ==##\n(.*)##== /CUSTOM CONFIG ==##}ms) {
+                $custom_config_lines = $1;
+            }
+        }
+
+        my $isos = join('/', $mount_point, $relative_iso_folder);
+        die "Folder '$isos' doesn't exist"
+            unless (-d $isos);
+        print $isos . "\n";
+        opendir(my $isos_dh, $isos)
+            || die "Failed to open folder '$isos': $!";
+
+        my @iso_files = sort { lc($a) cmp lc($b) } grep { ! /^\./ && -f "$isos/$_" && $_ =~ /\.iso$/i } readdir($isos_dh);
+        closedir($isos_dh);
+
+        foreach my $iso_file (@iso_files) {
+            print "\n\tFound iso '$iso_file'...\n";
+            my $iso_grub_config = generate_iso_grub_config($iso_file,$mount_point);
+            $config .= $iso_grub_config ."\n\n"
+                if $iso_grub_config;
+        }
+
+        $config .= "\n\n" . $power_config
+            if ($power_config);
+
+        $config .= "\n\n" . $custom_config_header . $custom_config_lines . $custom_config_footer;
+
+        open (my $grub_config_fh, '>', $grub_config_file)
+            || die "Failed to open '$grub_config_file': $!";
+
+        print $grub_config_fh $config;
+        close $grub_config_fh;
+
+        print "\nWritten config to '$grub_config_file', you can now boot off this USB stick\n\n";
+
+    }
+
+
+
+
+
+## Takes iso and mount point and creates a sub folder within
+## extra_files
+    sub create_iso_extra_files_folder {
+        my $iso_extra_files_folder = shift
+            || die "create_iso_extra_files_folder: no iso_extra_files_folder";
+
+        return $iso_extra_files_folder
+            if (-d $iso_extra_files_folder);
+
+        if (! mkdir $iso_extra_files_folder ) {
+            print "FAILED\n";
+            die "Failed to create '$iso_extra_files_folder': $! : $?";
+        }
+        return $iso_extra_files_folder;
+    }
+
+
+
+## Takes iso name and compares it against regex
+## Separate function to allow easy testing when changes to regex are made
+## FIXME: Write tests
+    sub check_iso_regex {
+        my $iso = shift || '';
+        die "Invalid iso '$iso'"
+            unless ($iso && $iso =~ m/\.iso$/i);
+        my $regex = shift || '';
+        die "Invalid regular expression"
+            unless (ref($regex) eq "Regexp");
+
+        return $iso =~ $regex;
+    }
+
+
+
+
+
+## Take the filename of an ISO image and the mount point of the multibooty Stick
+## and generate the grub stanze for this ISO
+    sub generate_iso_grub_config {
+        my $iso = shift || '';
+        die "Invalid iso '$iso'"
+            unless ($iso && $iso =~ m/\.iso$/i);
+        my $mount_point = shift
+            || die "generate_iso_grub_config: no mount_point";
+
+
+    ## Generic Grub menuentry header
+        my $template_header = qq~
+    menuentry "%%iso%% %%alias_in_menu%%" {
+        set isofile='%%fulliso%%'
+        loopback loop \$isofile
+    ~;
+
+
+    ## Generate template data
+        my $fulliso = '/' . $relative_iso_folder . '/' . $iso;
+        my $isoinitrd = '';
+        my $block_devs = block_device_from_mount_point($mount_point);
+        my $block_dev = shift (@$block_devs)
+            || die "Failed to get device for '$mount_point'";
+
+    ## Find the right template
+
+        my $iso_data = get_iso_data($iso);
+
+        my $template = '';
+
+        foreach my $iso_config (@$iso_configs) {
+            if (check_iso_regex($iso, $iso_config->{ regex })) {
+                print "$iso matched $iso_config->{ alias }\n";
+
+            ## Clean up template
+                my $iso_template = $iso_config->{ template };
+                $iso_template =~ s/^\s+/    /msg;
+
+            ## Create full template ready to process
+                $template = $template_header . $iso_template . "\n}";
+
+
+
+            ## Create a folder in extra_files for anything we might need
+                my $iso_extra_files_folder = join('/', $relative_extra_files_folder, $iso);
+                my $full_iso_extra_files_folder = join('/', $mount_point, $iso_extra_files_folder);
+                create_iso_extra_files_folder($full_iso_extra_files_folder);
+
+            ## Get some more variables that are required
+                my $isoinitrd           = '/' . $iso_extra_files_folder . '/' . $iso . '-initrd.gz';
+                my $full_isoinitrd      = join('/', $mount_point, $isoinitrd);
+
+
+            ## Check if we need to extract any files from the iso.
+                if (my $files = $iso_config->{ extract_files }) {
+
+                ## Mount on loopback
+                    my $loop_mount_point = create_random_mount_point();
+                    mount_partition_device(join('/', $mount_point, $fulliso), $loop_mount_point);
+
+                    foreach my $file (@$files) {
+                       
+                    ## Already extracted? 
+                        my $dst = join('/', $full_iso_extra_files_folder, $file);
+                        next
+                            if (-f $dst);
+
+                    ## Create source path
+                        my $src = join('/', $loop_mount_point, $file);
+                        die "ISO '$iso' does not contain file '$file' to extract"
+                            unless ( -f $src);
+
+                    ## Parse file path
+                        my ($filename, $path) = fileparse($file);
+
+                        my @directories = File::Spec->splitdir($path);
+                        my $incremental_path = $full_iso_extra_files_folder;
+
+
+                    ## Create the required folder structure to contain the files
+                        foreach my $directory (@directories) {
+
+                            $incremental_path = join('/',$incremental_path, $directory);
+                                next
+                                    if (-d $incremental_path);
+
+                                if (! mkdir $incremental_path ) {
+                                    print "FAILED\n";
+                                    die "Failed to create '$incremental_path': $! : $?";
+                                }
+                        }
+                        
+
+                        print "Extracting '$file': ";
+                        copy($src, $dst) or die "Copying '$src' to '$dst' from iso '$iso' failed: $!";
+                        print "OK\n";
+                    }
+                    unmount_mount_point($loop_mount_point);
+                    remove_mount_point($loop_mount_point);
+                }
+
+
+            ## Some distros are silly and don't have the distro name in the iso (Looking at you Gentoo)
+            ## Add the alias to the menu to make it easier
+                my $alias_in_menu = ($iso_config->{ alias_in_menu })
+                    ? "($iso_config->{ alias })"
+                    : '';
+
+            ## Some distros (debian derivatives often) require a separate initrd.gz, inform people what to do.
+                if (my $download_initrd = $iso_config->{ download_initrd }) {
+                    $download_initrd =~ s/%%arch%%/$iso_data->{ arch }/;
+
+                    if (! -f $full_isoinitrd) {
+                        print "NOTE: This distro's CD/DVD doesn't come with suitable initrd for this setup.\n";
+                        print "Please download an updated initrd.gz\n";
+                        print "This will usually be $iso_config->{ download_initrd } for the current stable release\n";
+                        print "Download this file and call it '$isoinitrd' on this stick and debian will boot\n";
+                        print "wget '$download_initrd' -O '$full_isoinitrd'\n";
+                    }
+                }
+
+
+            ## Perform template substitutions
+                $template =~ s/%%iso%%/$iso/msg;
+                $template =~ s/%%fulliso%%/$fulliso/msg;
+                $template =~ s/%%isoinitrd%%/$isoinitrd/msg;
+                $template =~ s/%%uuid%%/$block_dev->{ uuid }/msg;
+                $template =~ s/%%alias_in_menu%%/$alias_in_menu/msg;
+                $template =~ s/%%iso_extra_files_folder%%/$iso_extra_files_folder/msg;
+                $template =~ s/^\s*$//msg;
+                $template =~ s/^\s+//msg;
+
+                last;
+            }
+        }
+
+        return $template;
+        
+
+    }
+
+
+
+
+## Take an iso filename and try to parse out some information from it
+## Only looks at architecture at the moment
+    sub get_iso_data {
+        my $iso = shift || '';
+        die "Invalid iso '$iso'"
+            unless ($iso && $iso =~ m/\.iso$/i);
+
+        my $data = {
+            arch    => '',
+        };
+
+        if ($iso =~ /(amd64|x86_64|i\d86|ia64|arm64|armel|armhf|kfreebsd-amd64|kfreebsd-i\d86|mips|mipsel|powerpc|ppc64el|s390|s390x|sparc)/) {
+            $data->{ arch } = $1;
+        }
+        
+        return $data;
+    }
+
+
+
+
+## Help output
+    sub help {
+        print "USAGE: " . fileparse($0) . " {--init|--update} [--help] device\n\n";
+        version();
+        print "multibooty creates bootable usb sticks which will boot ISO images\n\n";
+        print "It has three steps...\n";
+        print "1- Initialize a USB stick - Only needs doing once\n";
+        print "multibooty --init /dev/xxx\n\n";
+        print "2- Place your .iso files within $relative_iso_folder on the USB stick\n\n";
+        print "3- Update the boot loader on the USB stick so it knows what ISOs you have added - Run this every time a new .iso file is added\n";
+        print "multibooty --update /dev/xxx\n\n";
+        print "NOTE: Upload the ISOs with their original name as it was when downloaded from the vendor, multiboot will use the filename to work out how to boot from it\n";
+        print "More information $project_url\n";
+        exit;
+    }
+
+
+
+## Show version
+    sub version {
+        print "$name Version: $VERSION\n";
+    }
