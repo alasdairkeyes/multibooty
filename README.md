@@ -61,6 +61,7 @@ Linux Distros
 - Knoppix 7.x (http://www.knopper.net/knoppix/index-en.html)
 - Linuxmint 17.x (http://linuxmint.com/)
 - OpenSUSE 13.x (https://www.opensuse.org/)
+- OpenSUSE Leap 42.x (https://www.opensuse.org/)
 - Red Hat Enterprise Linux 7.x (https://www.redhat.com/en)
 - Tails 1.x (https://tails.boum.org/)
 
@@ -171,6 +172,7 @@ These will all most likely be installed on your Linux System already
 
 ## Changelog
 - 2015-11-04 :: 0.01    :: First release
+- 2015-12-12 :: 0.02    :: Second release - OpenSUSE Leap 42 Support
 
 
 
