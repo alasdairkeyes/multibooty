@@ -86,7 +86,9 @@ Windows is not supported, if you can find a way to boot it please let me know
 
 
 
-## Debian/Ubuntu throws error "Your installation CD-ROM couldn't be mounted"
+## Common issues
+
+### Debian/Ubuntu throws error "Your installation CD-ROM couldn't be mounted"
 This has occured because you have not downloaded the updated initrd.gz with
 iso-scan included from the distro site. Instructions on doing this can be
 found by running multiboot --init.
