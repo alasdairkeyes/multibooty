@@ -7,7 +7,7 @@ use Getopt::Long;
 use File::Copy;
 use File::Basename;
 
-## Common variables used throughouth
+## Common variables used throughout
     my $name                = "Multibooty";
     my $project_url         = "https://github.com/alasdairkeyes/multibooty";
     my $VERSION             = '0.2';
