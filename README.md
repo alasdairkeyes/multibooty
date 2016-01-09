@@ -194,6 +194,7 @@ These will all most likely be installed on your Linux System already
 ## Changelog
 - 2015-11-04 :: 0.01    :: First release
 - 2015-12-12 :: 0.02    :: Second release - OpenSUSE Leap 42 Support
+- 2016-01-09 :: 0.03    :: Third release - Force --target=i386-pc switch with grub
 
 
 
