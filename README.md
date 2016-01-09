@@ -107,6 +107,25 @@ message, but it's not guaranteed.
 - Select Detect and Scan CDROM
 
 
+### Failed to create partition table
+
+When running with `--init` You receive an error..
+
+    Creating partition table on '/dev/sdb'...
+    Error: Partition(s) 2 on /dev/sdb have been written, but we have been
+    unable to inform the kernel of the change, probably because it/they are
+    in use.  As a result, the old partition(s) will remain in use.  You
+    should reboot now before making further changes.
+    FAILED
+    Failed to create partition table on '/dev/sdb':  : 256 at ./multibooty
+    line 402.
+
+This is due to parted being unable to inform the kernel of the new partition table
+it has just created.
+
+To resolve, remove the USB disk, re-insert and try again. When running `--init` make
+sure no partitions on the USB stick are mounted.
+
 
 ## Can you add support for Distro X?
 Yes, I'd like to, if you can come up with a grub menu entry that will
