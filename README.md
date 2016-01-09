@@ -12,14 +12,14 @@ There's no installation, just a single script
 Insert a USB stick into your machine that you are OK with getting wiped
 Assume this is /dev/sdx
 
-\# sudo ./multibooty --init /dev/sdx
+    # sudo ./multibooty --init /dev/sdx
 
 Now that the stick is initialized, mount the /dev/sdx1 partition and then
 add all your .iso files to multibooty/iso/
 
 Run the update to update your grub boot menu.
 
-\# sudo ./multibooty --update /dev/sdx
+    # sudo ./multibooty --update /dev/sdx
 
 
 
@@ -91,7 +91,7 @@ Windows is not supported, if you can find a way to boot it please let me know
 ### Debian/Ubuntu throws error "Your installation CD-ROM couldn't be mounted"
 This has occured because you have not downloaded the updated initrd.gz with
 iso-scan included from the distro site. Instructions on doing this can be
-found by running multiboot --init.
+found by running `multiboot --init`.
 
 As a secondary option, the following can be tried when presented with that
 message, but it's not guaranteed.
@@ -99,10 +99,10 @@ message, but it's not guaranteed.
 - Select No
 - Select Continue, you will be returned to a menu
 - ALT+F2
-- mkdir /mnt/multibooty
-- mount /dev/sdX1 /mnt/multibooty (Where /dev/sdx1 is your multibooty USB
+- `mkdir /mnt/multibooty`
+- `mount /dev/sdX1 /mnt/multibooty` (Where /dev/sdx1 is your multibooty USB
   partition)
-- mount -o loop /mnt/multibooty/multibooty/iso/ubuntu/ubuntu-15.10-server-amd64.iso /cdrom
+- `mount -o loop /mnt/multibooty/multibooty/iso/ubuntu/ubuntu-15.10-server-amd64.iso /cdrom`
 - ALT+F1
 - Select Detect and Scan CDROM
 
