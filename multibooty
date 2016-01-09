@@ -19,6 +19,7 @@ use File::Basename;
     my $relative_extra_files_folder = join('/', $relative_boot_folder, 'extra_files');
     my $temp_mount_point_root       = '/tmp';
     my $fs_type                     = 'ext4';
+    my $grub_target                 = 'i386-pc';
 
 
 ## Structure containing templates for different OS Grub configurations
@@ -537,7 +538,7 @@ exit;
 
         print "Installing Grub to '$device_path'...\n";
         my $boot_directory = join('/', $mount_point, $relative_boot_folder);
-        if (system("grub-install", "--force", "--no-floppy", "--boot-directory=$boot_directory", $device_path)) {
+        if (system("grub-install", "--target=$grub_target", "--force", "--no-floppy", "--boot-directory=$boot_directory", $device_path)) {
             print "FAILED\n";
             die "Failed to install grub: $! : $?";
         }
