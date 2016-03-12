@@ -7,6 +7,10 @@ use Getopt::Long;
 use File::Copy;
 use File::Basename;
 
+# If packages aren't in regular locations, try lib/ of the script's location
+use FindBin qw($Bin);
+use lib "$Bin/../lib";
+
 ## Common variables used throughout
     my $name                = "Multibooty";
     my $project_url         = "https://github.com/alasdairkeyes/multibooty";
