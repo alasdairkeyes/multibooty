@@ -60,6 +60,7 @@ Linux Distros
 - Kali Linux 2.x (https://www.kali.org/)
 - Knoppix 7.x (http://www.knopper.net/knoppix/index-en.html)
 - Linuxmint 17.x (http://linuxmint.com/)
+- Linuxmint 18.x (http://linuxmint.com/)
 - OpenSUSE 13.x (https://www.opensuse.org/)
 - OpenSUSE Leap 42.x (https://www.opensuse.org/)
 - Red Hat Enterprise Linux 7.x (https://www.redhat.com/en)
