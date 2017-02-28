@@ -70,7 +70,7 @@ Linux Distros
 Tools
 - dban 2.x (http://www.dban.org/)
 - gParted 0.x (http://gparted.org/)
-- Memtest86 6.x (http://www.memtest86.com/)
+- Memtest86 6.x 7.x (http://www.memtest86.com/)
 - Network Security Toolkit (NST 22) (www.networksecuritytoolkit.org/)
 - SystemRescueCD (www.sysresccd.org/)
 
