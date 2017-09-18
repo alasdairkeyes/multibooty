@@ -86,13 +86,23 @@ use lib "$Bin/../lib";
         },
 
     ## TAILS
-        ## ALL
+        ## 1-2
         {
-            alias           => 'tails',
-            regex           => qr{^tails-.*\.iso$}i,
+            alias           => 'tails2under',
+            regex           => qr{^tails-[^-]+?-2.*\.iso$}i,
             template        => qq~
                                     linux (loop)/live/vmlinuz2 boot=live config findiso=\$isofile live-media=removable apparmor=1 security=apparmor nopersistent noprompt timezone=Etc/UTC block.events_dfl_poll_msecs=1000 noautologin module=Tails
                                     initrd (loop)/live/initrd2.img
+                                ~,
+        },
+
+        ## 3+
+        {
+            alias           => 'tails3plus',
+            regex           => qr{^tails-[^-]+?-[^2].*\.iso$}i,
+            template        => qq~
+                                    linux (loop)/live/vmlinuz boot=live config findiso=\$isofile live-media=removable apparmor=1 security=apparmor nopersistent noprompt timezone=Etc/UTC block.events_dfl_poll_msecs=1000 noautologin module=Tails
+                                    initrd (loop)/live/initrd.img
                                 ~,
         },
 
