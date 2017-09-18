@@ -211,4 +211,4 @@ documentation
 - http://forums.justlinux.com/showthread.php?143973-A-grub-menu-booting-100-systems-of-Dos-Windows-Linux-BSD-and-Solaris
 
 ## Author
-- Alasdair Keyes - https://akeyes.co.uk/
+- Alasdair Keyes - https://www.akeyes.co.uk/
