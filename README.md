@@ -54,7 +54,7 @@ Linux Distros
 - Arch Linux 2015.11.01 (https://www.archlinux.org/)
 - CentOS 6 (https://www.centos.org/)
 - CentOS 7 (https://www.centos.org/)
-- Debian 8 (https://www.debian.org/)
+- Debian 8, 9 (https://www.debian.org/)
 - Fedora 22 (https://getfedora.org/)
 - Fedora 23 (https://getfedora.org/)
 - Kali Linux 2.x (https://www.kali.org/)

@@ -140,6 +140,18 @@ use lib "$Bin/../lib";
         },
 
     ## DEBIAN
+        ## 9
+        {
+            alias           => "debian9",
+            regex           => qr{^^debian-9\..*\.iso$}i,
+            template        => qq~
+                                    set initrdfile='%%isoinitrd%%'
+                                    linux (loop)/install.amd/vmlinuz iso-scan/ask_second_pass=true iso-scan/filename=\$isofile
+                                    initrd \$initrdfile
+                                ~,
+            instructions    => '',
+            download_initrd => 'https://mirrors.kernel.org/debian/dists/stretch/main/installer-%%arch%%/current/images/hd-media/initrd.gz',
+        },
         ## 8
         {
             alias           => "debian8",
