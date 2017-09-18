@@ -195,6 +195,9 @@ These will all most likely be installed on your Linux System already
 - 2015-11-04 :: 0.01    :: First release
 - 2015-12-12 :: 0.02    :: Second release - OpenSUSE Leap 42 Support
 - 2016-01-09 :: 0.03    :: Third release - Force --target=i386-pc switch with grub
+- 2017-09-17 :: 1.0.0   :: Support for latest Tails 3, Debian 9, Ubuntu, Gentoo
+                           Migration to semver
+                           Move to version 1 - non-beta
 
 
 

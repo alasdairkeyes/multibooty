@@ -14,7 +14,7 @@ use lib "$Bin/../lib";
 ## Common variables used throughout
     my $name                = "Multibooty";
     my $project_url         = "https://github.com/alasdairkeyes/multibooty";
-    my $VERSION             = '0.3';
+    my $VERSION             = '1.0.0';
     my $multibooty_folder   = 'multibooty';
     my $relative_boot_folder        = join('/', $multibooty_folder, 'boot');
     my $relative_grub_folder        = join('/', $relative_boot_folder, 'grub');
