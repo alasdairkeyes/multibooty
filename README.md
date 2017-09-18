@@ -55,7 +55,7 @@ Linux Distros
 - CentOS 6, 7 (https://www.centos.org/)
 - Debian 8, 9 (https://www.debian.org/)
 - Fedora 22 to 26 (https://getfedora.org/)
-- Kali Linux 2.x (https://www.kali.org/)
+- Kali Linux 2.x to 2017.1 (https://www.kali.org/)
 - Knoppix 7.x (http://www.knopper.net/knoppix/index-en.html)
 - Linuxmint 17, 18 (http://linuxmint.com/)
 - OpenSUSE 13.x (https://www.opensuse.org/)
