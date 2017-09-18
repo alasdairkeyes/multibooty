@@ -51,7 +51,7 @@ ammendments, either positive or negative.
 
 Linux Distros
 
-- Arch Linux 2015.11.01 (https://www.archlinux.org/)
+- Arch Linux 2015.11.01 to 2017.08.01 (https://www.archlinux.org/)
 - CentOS 6, 7 (https://www.centos.org/)
 - Debian 8, 9 (https://www.debian.org/)
 - Fedora 22, 23 (https://getfedora.org/)
