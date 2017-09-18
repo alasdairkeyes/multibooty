@@ -62,6 +62,7 @@ Linux Distros
 - OpenSUSE Leap 42.x (https://www.opensuse.org/)
 - Red Hat Enterprise Linux 7.x (https://www.redhat.com/en)
 - Tails 1.x, 2.x, 3.x (https://tails.boum.org/)
+- Ubuntu 15.x to 17.04 (https://www.ubuntu.com/)
 
 Tools
 - dban 2.x (http://www.dban.org/)
